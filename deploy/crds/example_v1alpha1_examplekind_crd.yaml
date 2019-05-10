@@ -1,9 +1,9 @@
 apiVersion: apiextensions.k8s.io/v1beta1
 kind: CustomResourceDefinition
 metadata:
-  name: examplekinds.example.kenzan.com
+  name: examplekinds.example.mfo.com
 spec:
-  group: example.kenzan.com
+  group: example.mfo.com
   names:
     kind: Examplekind
     listKind: ExamplekindList

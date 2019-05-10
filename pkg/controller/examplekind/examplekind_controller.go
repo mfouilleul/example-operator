@@ -2,12 +2,15 @@ package examplekind
 
 import (
 	"context"
+	"log"
+	"reflect"
 
-	examplev1alpha1 "github.com/mfouilleul/example-operator/pkg/apis/example/v1alpha1"
-
+	examplev1alpha1 "github.com/linux-blog-demo/example-operator/pkg/apis/example/v1alpha1"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -16,11 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	logf "sigs.k8s.io/controller-runtime/pkg/runtime/log"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
-
-var log = logf.Log.WithName("controller_examplekind")
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -83,8 +83,7 @@ type ReconcileExamplekind struct {
 // The Controller will requeue the Request to be processed again if the returned error is non-nil or
 // Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileExamplekind) Reconcile(request reconcile.Request) (reconcile.Result, error) {
-	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
-	reqLogger.Info("Reconciling Examplekind")
+	log.Printf("Reconciling Examplekind %s/%s\n", request.Namespace, request.Name)
 
 	// Fetch the Examplekind instance
 	instance := &examplev1alpha1.Examplekind{}
@@ -100,54 +99,122 @@ func (r *ReconcileExamplekind) Reconcile(request reconcile.Request) (reconcile.R
 		return reconcile.Result{}, err
 	}
 
-	// Define a new Pod object
-	pod := newPodForCR(instance)
-
-	// Set Examplekind instance as the owner and controller
-	if err := controllerutil.SetControllerReference(instance, pod, r.scheme); err != nil {
-		return reconcile.Result{}, err
-	}
-
-	// Check if this Pod already exists
-	found := &corev1.Pod{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: pod.Name, Namespace: pod.Namespace}, found)
+	// Check if the deployment already exists, if not create a new one
+	found := &appsv1.Deployment{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: instance.Name, Namespace: instance.Namespace}, found)
 	if err != nil && errors.IsNotFound(err) {
-		reqLogger.Info("Creating a new Pod", "Pod.Namespace", pod.Namespace, "Pod.Name", pod.Name)
-		err = r.client.Create(context.TODO(), pod)
+		// Define a new deployment
+		dep := r.newDeploymentForCR(instance)
+		log.Printf("Creating a new Deployment %s/%s\n", dep.Namespace, dep.Name)
+		err = r.client.Create(context.TODO(), dep)
 		if err != nil {
+			log.Printf("Failed to create new Deployment: %v\n", err)
 			return reconcile.Result{}, err
 		}
-
-		// Pod created successfully - don't requeue
-		return reconcile.Result{}, nil
+		// Deployment created successfully - return and requeue
+		return reconcile.Result{Requeue: true}, nil
 	} else if err != nil {
+		log.Printf("Failed to get Deployment: %v\n", err)
 		return reconcile.Result{}, err
 	}
 
-	// Pod already exists - don't requeue
-	reqLogger.Info("Skip reconcile: Pod already exists", "Pod.Namespace", found.Namespace, "Pod.Name", found.Name)
+	// Ensure the deployment Count is the same as the spec
+	count := instance.Spec.Count
+	if *found.Spec.Replicas != count {
+		found.Spec.Replicas = &count
+		err = r.client.Update(context.TODO(), found)
+		if err != nil {
+			log.Printf("Failed to update Deployment: %v\n", err)
+			return reconcile.Result{}, err
+		}
+		// Spec updated - return and requeue
+		return reconcile.Result{Requeue: true}, nil
+	}
+
+	// List the pods for this deployment
+	podList := &corev1.PodList{}
+	labelSelector := labels.SelectorFromSet(labelsForExampleKind(instance.Name))
+	listOps := &client.ListOptions{Namespace: instance.Namespace, LabelSelector: labelSelector}
+	err = r.client.List(context.TODO(), listOps, podList)
+	if err != nil {
+		log.Printf("Failed to list pods: %v", err)
+		return reconcile.Result{}, err
+	}
+	podNames := getPodNames(podList.Items)
+
+	// Update status.PodNames if needed
+	if !reflect.DeepEqual(podNames, instance.Status.PodNames) {
+		instance.Status.PodNames = podNames
+		err := r.client.Update(context.TODO(), instance)
+		if err != nil {
+			log.Printf("failed to update node status: %v", err)
+			return reconcile.Result{}, err
+		}
+	}
+
+	// Update AppGroup status
+	if instance.Spec.Group != instance.Status.AppGroup {
+		instance.Status.AppGroup = instance.Spec.Group
+		err := r.client.Update(context.TODO(), instance)
+		if err != nil {
+			log.Printf("failed to update group status: %v", err)
+			return reconcile.Result{}, err
+		}
+	}
 	return reconcile.Result{}, nil
 }
 
-// newPodForCR returns a busybox pod with the same name/namespace as the cr
-func newPodForCR(cr *examplev1alpha1.Examplekind) *corev1.Pod {
-	labels := map[string]string{
-		"app": cr.Name,
+// getPodNames returns the pod names of the array of pods passed in.
+func getPodNames(pods []corev1.Pod) []string {
+	var podNames []string
+	for _, pod := range pods {
+		podNames = append(podNames, pod.Name)
 	}
-	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cr.Name + "-pod",
-			Namespace: cr.Namespace,
-			Labels:    labels,
+	return podNames
+}
+
+//Set labels in a map.
+func labelsForExampleKind(name string) map[string]string {
+	return map[string]string{"app": "Example-Operator", "exampleoperator_cr": name}
+}
+
+// Create newDeploymentForCR method to create a deployment.
+func (r *ReconcileExamplekind) newDeploymentForCR(m *examplev1alpha1.Examplekind) *appsv1.Deployment {
+	labels := labelsForExampleKind(m.Name)
+	replicas := m.Spec.Count
+	dep := &appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "apps/v1",
+			Kind:       "Deployment",
 		},
-		Spec: corev1.PodSpec{
-			Containers: []corev1.Container{
-				{
-					Name:    "busybox",
-					Image:   "busybox",
-					Command: []string{"sleep", "3600"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      m.Name,
+			Namespace: m.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: labels,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: labels,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Image: m.Spec.Image,
+						Name:  m.Name,
+						Ports: []corev1.ContainerPort{{
+							ContainerPort: m.Spec.Port,
+							Name:          m.Name,
+						}},
+					}},
 				},
 			},
 		},
 	}
+	// Set Examplekind instance as the owner and controller
+	controllerutil.SetControllerReference(m, dep, r.scheme)
+	return dep
+
 }
