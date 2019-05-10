@@ -5,7 +5,7 @@ import (
 	"log"
 	"reflect"
 
-	examplev1alpha1 "github.com/linux-blog-demo/example-operator/pkg/apis/example/v1alpha1"
+	examplev1alpha1 "github.com/mfouilleul/example-operator/pkg/apis/example/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
