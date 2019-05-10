@@ -3,5 +3,7 @@ kind: Examplekind
 metadata:
   name: example-examplekind
 spec:
-  # Add fields here
-  size: 3
+  count: 3
+  group: Demo-App
+  image: nginx
+  port: 80
