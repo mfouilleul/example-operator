@@ -47,7 +47,7 @@ rules:
   verbs:
   - update
 - apiGroups:
-  - example.kenzan.com
+  - example.mfo.com
   resources:
   - '*'
   verbs:

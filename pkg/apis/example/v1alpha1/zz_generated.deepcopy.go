@@ -93,11 +93,6 @@ func (in *ExamplekindStatus) DeepCopyInto(out *ExamplekindStatus) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
-	if in.AppGroup != nil {
-		in, out := &in.AppGroup, &out.AppGroup
-		*out = make([]string, len(*in))
-		copy(*out, *in)
-	}
 	return
 }
 
