@@ -13,6 +13,10 @@ type ExamplekindSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
+	Count int32  `json:"count"`
+	Group string `json:"group"`
+	Image string `json:"image"`
+	Port  int32  `json:"port"`
 }
 
 // ExamplekindStatus defines the observed state of Examplekind
@@ -21,6 +25,8 @@ type ExamplekindStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book.kubebuilder.io/beyond_basics/generating_crd.html
+	PodNames []string `json:"podnames"`
+	AppGroup []string `json:"appgroup"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
