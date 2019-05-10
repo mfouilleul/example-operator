@@ -1,0 +1,7 @@
+apiVersion: example.kenzan.com/v1alpha1
+kind: Examplekind
+metadata:
+  name: example-examplekind
+spec:
+  # Add fields here
+  size: 3
